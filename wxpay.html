@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>微信支付</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=0">
+<style>
+    html,body{margin: 0;padding: 0;}
+    ul,li{margin: 0;padding: 0;list-style: none;}
+    button{background: #000;color: #fff;border: 0;border-radius: 3px;font-size: 14px;padding: 5px 15px;}
+    p{margin:30px 20px;}
+</style>
+</head>
+
+<body>
+    <div style="margin:10px;border:1px solid #ccc;">
+        <p><button id="page-refresh">刷新</button> </p>
+        <p><button id="wxpay">求打赏</button> </p>
+    </div>
+</body>
+ 
+<script src="http://taohaiquan.com/h5/v1/js/jqmobi.js"></script>
+<script>
+(function(){ 
+    //对jq进行扩展
+    $.extend($.fn, {
+        eq : $.fn.eq || function(i){
+            var _this=this, 
+            slice=function() {
+                return $([].slice.apply(_this, arguments));
+            };
+            return i === -1 ? slice(i) : slice(i, + i + 1);
+        },
+        reflow : function(){//加上有时到不靠谱，还没查出具体原因
+            this.each(function(){
+                this.nodeType && this.nodeType==1 && getComputedStyle(this).zoom;
+            }); 
+            return this;
+        }
+    });
+
+    var JT = {     
+        /**
+         * @param str
+         * @param type decode or not
+         * @return obj
+         * @exam
+         *
+         * strToObj(abc=1) == {abc:1}
+         */
+        strToObj : function(str, type) {
+            var paramArray = [];
+            var paramObj = {};
+            var i,a,len;
+
+            paramArray = str.split('&');
+            len = paramArray.length;
+            for (i = 0; i < len; i++) {
+                if (paramArray[i].indexOf('=') < 0) {
+                    continue
+                }
+                a = paramArray[i].split('=');
+                paramObj[a[0]] = type ? decodeURIComponent(a[1]) : a[1];
+            }
+            return paramObj;
+        },
+    
+        /**
+         *
+         * @param obj
+         * @param shouldEncode boolean
+         * @return str
+         * @exam
+         *
+         * objToStr({abc:1,efg:2})    //abc=1&efg=2
+         */
+        objToStr : function(obj, shouldEncode) {
+            var str = "", key, tempVal;
+
+            for (key in obj) {
+                if (typeof obj[key] === "undefined") {
+                    continue;
+                }
+                tempVal = shouldEncode ? encodeURIComponent(obj[key]) : obj[key];
+                str += key + "=" + tempVal + "&";
+            }
+
+            return str.slice(0, (str.length - 1));
+        },        
+                
+        /**
+         * 获得当前url参数值
+         * @param {String}要取的参数名          
+         * @param {Boolean} 是否是标准的url, 默认为true (标准index.jsp?bid=1243260#live 不标准 index.jsp#live/bid=1243260)
+         * @return {String}    参数值         
+         */            
+        getUrlParam : function(key, isStandardUrl){        
+            var query, b=isStandardUrl;
+            if(b || typeof b == 'undefined' && !b){//url eg: index.jsp?bid=1243260#live
+                query = location.search.substr(1, location.search.length);            
+            }else{//url eg: index.jsp#live/[?][&]bid=1243260
+                var str=location.href;
+                if(str.indexOf('#')==-1){return '';}
+                str=str.slice(str.indexOf('#'));
+                if(str.indexOf('/')==-1){return '';}
+                str=str.slice(str.indexOf('/')+1);    
+                if(str.charAt(0)=='?'){str=str.slice(1);}                
+                query=str;                    
+            }
+            
+            var obj = this.strToObj(decodeURIComponent(query));
+            return key && typeof obj[key] != 'undefined' ? obj[key] : '';
+        },
+
+        
+        //$().ready 增加了一个条件
+        domReady : function(callback){
+            if (document.readyState === "complete" || document.readyState === "loaded" || document.readyState === "interactive"){
+                callback();
+            }
+            document.addEventListener("DOMContentLoaded", callback, false);
+        },
+
+        randomInt : function (under, over){
+            switch(arguments.length){
+                case 1: return parseInt(Math.random()*under+1, 10);
+                case 2: return parseInt(Math.random()*(over-under+1) + under, 10);
+                default: return 0;
+            }
+        }
+    };
+
+    JT.domReady(function(){
+        (function wxPay(){
+            var weixinCode = JT.getUrlParam('code');
+           
+            if( weixinCode ){
+                var url = location.href;
+                url = url.replace(/(&*)code=[^&#]*/g, '').replace(/(&*)state=[^&#]*/g, '');
+                history.replaceState('', '', url);
+
+                function callpay(payArgs){
+                    function onBridgeReady(){
+                        WeixinJSBridge.invoke(
+                            'getBrandWCPayRequest',
+                            payArgs,
+                            function(res){
+                                var str = '';
+                                if( /ok/.test(res.err_msg) ){
+                                    str = '支付成功';
+                                }else if( /cancel/.test(res.err_msg) ){
+                                    str = '支付取消';
+                                }else{
+                                    str = '支付失败';
+                                }
+                                alert(str);
+                            }
+                        );
+                    }
+
+                    if (typeof WeixinJSBridge == "undefined"){
+                        document.addEventListener('WeixinJSBridgeReady', onBridgeReady, false);
+                    }else{
+                        onBridgeReady();
+                    }
+                }
+
+                var paramObj = {
+                    code        : weixinCode,
+                    product_id  : 'H5_'+Date.now(),
+                    price       : JT.randomInt(1,20),
+                    title       : '打赏一下'
+                };
+
+                var dataPath= 'http://taohaiquan.com/api/wx/'
+                var url     = dataPath +'get_wxpay_args.php?' + $.param(paramObj);
+                
+                $.getJSON(url, function(json){
+                    if(json.code != 0){ alert( JSON.stringify(json) );
+                        alert('获得微信参数失败');return;
+                    }
+                    callpay(json.data);
+                });
+            }
+        })();
+
+        $('#wxpay').bind('click', function(e){
+            var url=''+
+            'https://open.weixin.qq.com/connect/oauth2/authorize?'+
+            'appid=wxd12367bea84e6d73&'+ // arthome: wxd12367bea84e6d73 find: wx173e2a1b05d12ea9
+            'redirect_uri='+encodeURIComponent(location.href)+'&'+
+            'response_type=code&'+
+            'scope=snsapi_base&'+ //snsapi_base snsapi_userinfo
+            'state=1#wechat_redirect';
+
+            location.href = url;
+        });
+    }); 
+})();
+</script>
+<script>
+    $('#page-refresh').bind('click', function(e){
+        location.reload();
+    });
+</script>
+
+</html>
